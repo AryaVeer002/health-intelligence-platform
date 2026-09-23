@@ -3,10 +3,18 @@ from datetime import date
 from pydantic import BaseModel, Field
 
 
-class HealthProfile(BaseModel):
+class HealthProfileCreate(BaseModel):
     age: int = Field(gt=0)
     weight: float = Field(gt=0)
     height: float = Field(gt=0)
+
+
+class HealthProfileResponse(BaseModel):
+    id: int
+    user_id: int
+    age: int
+    weight: float
+    height: float
 
 
 class HealthRecord(BaseModel):

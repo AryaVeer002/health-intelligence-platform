@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 
-from app.schemas.health import HealthProfile
-
+from app.schemas.health import HealthProfileCreate
 
 router = APIRouter()
 
@@ -15,7 +14,7 @@ def health_check():
 
 
 @router.post("/health/profile")
-def create_health_profile(profile: HealthProfile):
+def create_health_profile(profile: HealthProfileCreate):
     return {
         "message": "Health profile received",
         "profile": profile

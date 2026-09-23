@@ -5,6 +5,11 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.models.health_profile import HealthProfile
+from app.schemas.health import (
+    HealthProfileCreate,
+    HealthProfileResponse
+)
 
 
 router = APIRouter(
@@ -102,3 +107,49 @@ def delete_user(
     db.commit()
 
     return None
+
+
+@router.post(
+    "/{user_id}/health-profile",
+    response_model=HealthProfileResponse,
+    status_code=201,
+)
+def create_health_profile(
+    user_id: int,
+    profile_data: HealthProfileCreate,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(User.id == user_id)
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    profile_statement = select(HealthProfile).where(
+        HealthProfile.user_id == user_id
+    )
+    profile_result = db.execute(profile_statement)
+    existing_profile = profile_result.scalar_one_or_none()
+
+    if existing_profile is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Health profile already exists"
+        )
+
+    profile = HealthProfile(
+        user_id=user_id,
+        age=profile_data.age,
+        weight=profile_data.weight,
+        height=profile_data.height
+    )
+
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+
+    return profile
