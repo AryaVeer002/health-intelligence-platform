@@ -4,13 +4,15 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.models.health_profile import HealthProfile
+from app.models.health_record import HealthRecord
+from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.schemas.health import (
     HealthProfileCreate,
-    HealthProfileResponse
+    HealthProfileResponse,
+    HealthRecordCreate,
+    HealthRecordResponse
 )
-
 
 router = APIRouter(
     prefix="/users",
@@ -153,3 +155,69 @@ def create_health_profile(
     db.refresh(profile)
 
     return profile
+
+
+
+@router.post(
+    "/{user_id}/health-records",
+    response_model=HealthRecordResponse,
+    status_code=201,
+)
+def create_health_record(
+    user_id: int,
+    record_data: HealthRecordCreate,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(User.id == user_id)
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    record = HealthRecord(
+        user_id=user_id,
+        record_date=record_data.record_date,
+        weight=record_data.weight,
+        height=record_data.height,
+        heart_rate=record_data.heart_rate
+    )
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return record
+
+
+
+@router.get(
+    "/{user_id}/health-records",
+    response_model=list[HealthRecordResponse],
+)
+def get_health_records(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(User.id == user_id)
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    records_statement = (
+        select(HealthRecord)
+        .where(HealthRecord.user_id == user_id)
+        .order_by(HealthRecord.record_date.asc())
+    )
+
+    records_result = db.execute(records_statement)
+
+    return records_result.scalars().all()

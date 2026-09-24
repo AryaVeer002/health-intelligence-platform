@@ -17,8 +17,17 @@ class HealthProfileResponse(BaseModel):
     height: float
 
 
-class HealthRecord(BaseModel):
+class HealthRecordCreate(BaseModel):
     record_date: date
     weight: float = Field(gt=0)
     height: float = Field(gt=0)
     heart_rate: int = Field(gt=0)
+
+
+class HealthRecordResponse(BaseModel):
+    id: int
+    user_id: int
+    record_date: date
+    weight: float
+    height: float
+    heart_rate: int
