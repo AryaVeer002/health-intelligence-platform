@@ -5,8 +5,15 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.models.user import User
 from app.models.health_record import HealthRecord
-from app.schemas.analytics import TrendResponse
-from app.schemas.analytics import TrendResponse, AnomalyResponse
+
+from app.schemas.analytics import (
+    TrendResponse,
+    AnomalyResponse,
+    RiskResponse,
+    RiskAssessmentRequest,
+)
+
+from app.services.risk_service import risk_service
 
 
 router = APIRouter(
@@ -145,3 +152,55 @@ def get_heart_rate_anomalies(
         historical_values.append(record.heart_rate)
 
     return anomalies
+
+
+@router.post(
+    "/users/{user_id}/risk",
+    response_model=RiskResponse
+)
+def get_health_risk(
+    user_id: int,
+    assessment: RiskAssessmentRequest,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(User.id == user_id)
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    model_features = {
+        "_BMI5": assessment.bmi,
+        "_AGEG5YR": assessment.age_group,
+        "SEX": assessment.sex,
+        "_RFHLTH": assessment.general_health,
+        "PHYSHLTH": assessment.physical_health_days,
+        "_TOTINDA": assessment.physical_activity,
+        "_RFSMOK3": assessment.smoking,
+        "DRNKANY5": assessment.alcohol,
+    }
+
+    prediction = risk_service.predict(model_features)
+
+    return {
+        "risk_type": "diabetes",
+        "risk_score": round(
+            prediction["risk_score"],
+            4
+        ),
+        "risk_level": prediction["risk_level"],
+        "contributing_factors": [
+            "BMI",
+            "Age group",
+            "General health",
+            "Physical health",
+            "Physical activity",
+            "Smoking",
+            "Alcohol",
+            "Sex",
+        ],
+    }

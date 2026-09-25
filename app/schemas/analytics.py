@@ -24,3 +24,15 @@ class RiskResponse(BaseModel):
     risk_score: float = Field(ge=0, le=1)
     risk_level: str
     contributing_factors: list[str]
+
+
+
+class RiskAssessmentRequest(BaseModel):
+    bmi: float = Field(gt=0)
+    age_group: int = Field(ge=1, le=14)
+    sex: int = Field(ge=1, le=2)
+    general_health: int = Field(ge=1, le=2)
+    physical_health_days: int = Field(ge=0, le=30)
+    physical_activity: int = Field(ge=1, le=2)
+    smoking: int = Field(ge=1, le=2)
+    alcohol: int = Field(ge=1, le=2)

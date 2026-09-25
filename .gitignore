@@ -18,6 +18,10 @@ __pycache__/
 data/*
 !data/.gitkeep
 
+# ML datasets
+ml/data/*
+!ml/data/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
