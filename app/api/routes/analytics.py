@@ -194,13 +194,8 @@ def get_health_risk(
         ),
         "risk_level": prediction["risk_level"],
         "contributing_factors": [
-            "BMI",
-            "Age group",
-            "General health",
-            "Physical health",
-            "Physical activity",
-            "Smoking",
-            "Alcohol",
-            "Sex",
+            item["factor"]
+            for item in prediction["explanations"]
         ],
+        "explanations": prediction["explanations"],
     }

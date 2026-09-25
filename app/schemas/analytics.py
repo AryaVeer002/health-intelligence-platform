@@ -19,11 +19,18 @@ class AnomalyResponse(BaseModel):
     detected_at: date
 
 
+class RiskExplanation(BaseModel):
+    factor: str
+    contribution: float
+    direction: str
+
+
 class RiskResponse(BaseModel):
     risk_type: str
     risk_score: float = Field(ge=0, le=1)
     risk_level: str
     contributing_factors: list[str]
+    explanations: list[RiskExplanation]
 
 
 

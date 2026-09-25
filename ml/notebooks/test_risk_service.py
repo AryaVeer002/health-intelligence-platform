@@ -15,10 +15,23 @@ sample_features = {
 
 result = risk_service.predict(sample_features)
 
+
 print()
 print("=" * 40)
 print("DIABETES RISK SERVICE TEST")
 print("=" * 40)
+
 print(f"Risk score : {result['risk_score']:.4f}")
 print(f"Risk level : {result['risk_level']}")
+
+print()
+print("Explanations:")
+
+for explanation in result["explanations"]:
+    print(
+        f"  {explanation['factor']}: "
+        f"{explanation['contribution']:+.4f} "
+        f"({explanation['direction']})"
+    )
+
 print("=" * 40)
