@@ -615,3 +615,294 @@ def get_user_insights(
         "insight_count": len(insights),
         "insights": insights
     }
+
+@router.get("/users/{user_id}/dashboard")
+def get_user_dashboard(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    # --------------------------------------------------
+    # 1. Verify user
+    # --------------------------------------------------
+
+    user_statement = select(User).where(
+        User.id == user_id
+    )
+
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # --------------------------------------------------
+    # 2. Get health profile
+    # --------------------------------------------------
+
+    profile_statement = select(
+        HealthProfile
+    ).where(
+        HealthProfile.user_id == user_id
+    )
+
+    profile_result = db.execute(profile_statement)
+    profile = profile_result.scalar_one_or_none()
+
+    dashboard_profile = None
+
+    if profile is not None:
+        bmi = bmi_service.calculate(
+            profile.weight,
+            profile.height
+        )
+
+        dashboard_profile = {
+            "age": profile.age,
+            "weight": profile.weight,
+            "height": profile.height,
+            "bmi": bmi
+        }
+
+    # --------------------------------------------------
+    # 3. Get measurements
+    # --------------------------------------------------
+
+    measurement_statement = (
+        select(HealthMeasurement)
+        .where(
+            HealthMeasurement.user_id == user_id
+        )
+        .order_by(
+            HealthMeasurement.measured_at.asc()
+        )
+    )
+
+    measurement_result = db.execute(
+        measurement_statement
+    )
+
+    measurements = (
+        measurement_result.scalars().all()
+    )
+
+    # --------------------------------------------------
+    # 4. Group measurements
+    # --------------------------------------------------
+
+    grouped_measurements = {}
+
+    for measurement in measurements:
+        metric = measurement.metric
+
+        if metric not in grouped_measurements:
+            grouped_measurements[metric] = []
+
+        grouped_measurements[metric].append(
+            measurement
+        )
+
+    # --------------------------------------------------
+    # 5. Build trends
+    # --------------------------------------------------
+
+    trends = []
+
+    for metric, metric_measurements in (
+        grouped_measurements.items()
+    ):
+        if len(metric_measurements) < 2:
+            continue
+
+        first_measurement = metric_measurements[0]
+        latest_measurement = metric_measurements[-1]
+
+        first_value = first_measurement.value
+        latest_value = latest_measurement.value
+
+        change = latest_value - first_value
+
+        if first_value != 0:
+            change_percent = (
+                change / first_value
+            ) * 100
+        else:
+            change_percent = 0
+
+        if change > 0:
+            trend = "increasing"
+        elif change < 0:
+            trend = "decreasing"
+        else:
+            trend = "stable"
+
+        trends.append({
+            "metric": metric,
+            "unit": latest_measurement.unit,
+            "first_value": first_value,
+            "latest_value": latest_value,
+            "change": round(change, 2),
+            "change_percent": round(
+                change_percent,
+                2
+            ),
+            "trend": trend
+        })
+
+    # --------------------------------------------------
+    # 6. Build anomalies
+    # --------------------------------------------------
+
+    anomalies = []
+
+    for metric, metric_measurements in (
+        grouped_measurements.items()
+    ):
+        if len(metric_measurements) < 2:
+            continue
+
+        previous_measurement = (
+            metric_measurements[-2]
+        )
+
+        latest_measurement = (
+            metric_measurements[-1]
+        )
+
+        previous_value = previous_measurement.value
+        latest_value = latest_measurement.value
+
+        change = latest_value - previous_value
+
+        if previous_value != 0:
+            change_percent = (
+                change / previous_value
+            ) * 100
+        else:
+            change_percent = 0
+
+        is_anomaly = abs(change_percent) >= 10
+
+        anomalies.append({
+            "metric": metric,
+            "unit": latest_measurement.unit,
+            "previous_value": previous_value,
+            "latest_value": latest_value,
+            "change": round(change, 2),
+            "change_percent": round(
+                change_percent,
+                2
+            ),
+            "is_anomaly": is_anomaly,
+            "measured_at":
+                latest_measurement.measured_at
+        })
+        
+        anomalies = [
+        item
+        for item in anomalies
+        if item["is_anomaly"]
+    ]
+
+
+    # --------------------------------------------------
+    # 7. Build insights
+    # --------------------------------------------------
+
+    trend_insights = (
+        insight_service.build_trend_insights(
+            grouped_measurements
+        )
+    )
+
+    anomaly_insights = (
+        insight_service.build_anomaly_insights(
+            grouped_measurements
+        )
+    )
+
+    insights = (
+        trend_insights +
+        anomaly_insights
+    )
+
+    # --------------------------------------------------
+    # 8. Calculate ML risk
+    # --------------------------------------------------
+
+    dashboard_risk = None
+
+    if profile is not None:
+
+        risk_statement = select(
+            RiskProfile
+        ).where(
+            RiskProfile.user_id == user_id
+        )
+
+        risk_result = db.execute(
+            risk_statement
+        )
+
+        risk_profile = (
+            risk_result.scalar_one_or_none()
+        )
+
+        if risk_profile is not None:
+
+            risk_features = (
+                risk_feature_service.build_features(
+                    profile,
+                    risk_profile
+                )
+            )
+
+            prediction = risk_service.predict(
+                risk_features
+            )
+
+            dashboard_risk = {
+                "risk_type": "diabetes",
+                "risk_score": round(
+                    prediction["risk_score"],
+                    4
+                ),
+                "risk_level":
+                    prediction["risk_level"],
+                "explanations":
+                    prediction["explanations"]
+            }
+
+            insights.append({
+                "type": "risk",
+                "metric": "Diabetes risk",
+                "risk_score": round(
+                    prediction["risk_score"],
+                    4
+                ),
+                "risk_level":
+                    prediction["risk_level"],
+                "message": (
+                    f"Model-estimated diabetes "
+                    f"risk score is "
+                    f"{prediction['risk_score']:.4f} "
+                    f"({prediction['risk_level']})."
+                ),
+                "explanations":
+                    prediction["explanations"]
+            })
+
+    # --------------------------------------------------
+    # 9. Return dashboard
+    # --------------------------------------------------
+
+    return {
+        "user_id": user_id,
+        "profile": dashboard_profile,
+        "risk": dashboard_risk,
+        "trends": trends,
+        "anomalies": anomalies,
+        "insights": insights
+    }

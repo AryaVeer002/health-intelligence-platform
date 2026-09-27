@@ -43,3 +43,27 @@ class RiskAssessmentRequest(BaseModel):
     physical_activity: int = Field(ge=1, le=2)
     smoking: int = Field(ge=1, le=2)
     alcohol: int = Field(ge=1, le=2)
+
+
+
+class DashboardProfile(BaseModel):
+    age: int
+    weight: float
+    height: float
+    bmi: float
+
+
+class DashboardRisk(BaseModel):
+    risk_type: str
+    risk_score: float = Field(ge=0, le=1)
+    risk_level: str
+    explanations: list[RiskExplanation]
+
+
+class DashboardResponse(BaseModel):
+    user_id: int
+    profile: DashboardProfile | None
+    risk: DashboardRisk | None
+    trends: list[dict]
+    anomalies: list[dict]
+    insights: list[dict]
