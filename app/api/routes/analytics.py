@@ -259,3 +259,107 @@ def get_user_measurements(
             for measurement in measurements
         ]
     }   
+
+
+@router.get("/users/{user_id}/trends")
+def get_user_trends(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(
+        User.id == user_id
+    )
+
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    measurement_statement = (
+        select(HealthMeasurement)
+        .where(
+            HealthMeasurement.user_id == user_id
+        )
+        .order_by(
+            HealthMeasurement.measured_at.asc()
+        )
+    )
+
+    measurement_result = db.execute(
+        measurement_statement
+    )
+
+    measurements = (
+        measurement_result.scalars().all()
+    )
+
+    grouped_measurements = {}
+
+    for measurement in measurements:
+        metric = measurement.metric
+
+        if metric not in grouped_measurements:
+            grouped_measurements[metric] = []
+
+        grouped_measurements[metric].append(
+            measurement
+        )
+
+    trends = []
+
+    for metric, metric_measurements in (
+        grouped_measurements.items()
+    ):
+        first_measurement = metric_measurements[0]
+        latest_measurement = metric_measurements[-1]
+
+        first_value = first_measurement.value
+        latest_value = latest_measurement.value
+
+        change = latest_value - first_value
+
+        if first_value != 0:
+            change_percent = (
+                change / first_value
+            ) * 100
+        else:
+            change_percent = 0
+
+        if change > 0:
+            trend = "increasing"
+        elif change < 0:
+            trend = "decreasing"
+        else:
+            trend = "stable"
+
+        trends.append(
+            {
+                "metric": metric,
+                "unit": latest_measurement.unit,
+                "first_value": first_value,
+                "latest_value": latest_value,
+                "change": round(change, 2),
+                "change_percent": round(
+                    change_percent,
+                    2
+                ),
+                "trend": trend,
+                "measurement_count": len(
+                    metric_measurements
+                ),
+                "first_measured_at":
+                    first_measurement.measured_at,
+                "latest_measured_at":
+                    latest_measurement.measured_at
+            }
+        )
+
+    return {
+        "user_id": user_id,
+        "trend_count": len(trends),
+        "trends": trends
+    }

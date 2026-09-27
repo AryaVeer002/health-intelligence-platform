@@ -6,6 +6,18 @@ class HealthDataExtractor:
     def extract(self, text: str) -> dict:
         data = {}
 
+        report_date_match = re.search(
+            r"\b(?:Report\s*Date|Date)\s*[:=]\s*"
+            r"(\d{4}-\d{2}-\d{2})",
+            text,
+            re.IGNORECASE
+        )
+
+        if report_date_match:
+            data["report_date"] = (
+                report_date_match.group(1)
+            )
+
         bmi_match = re.search(
             r"\bBMI\s*[:=]\s*(\d+(?:\.\d+)?)",
             text,
@@ -13,7 +25,9 @@ class HealthDataExtractor:
         )
 
         if bmi_match:
-            data["bmi"] = float(bmi_match.group(1))
+            data["bmi"] = float(
+                bmi_match.group(1)
+            )
 
         heart_rate_match = re.search(
             r"\b(?:Heart\s*Rate|HR)\s*[:=]\s*(\d+)",

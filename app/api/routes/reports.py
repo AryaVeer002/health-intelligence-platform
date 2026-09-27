@@ -14,6 +14,7 @@ from app.services.health_data_extractor import (
     health_data_extractor
 )
 
+
 router = APIRouter(
     prefix="/reports",
     tags=["Reports"]
@@ -215,6 +216,12 @@ def analyze_report(
         }
 
     measured_at = report.report_date
+
+    if "report_date" in health_data:
+        measured_at = datetime.strptime(
+            health_data["report_date"],
+            "%Y-%m-%d"
+        )
 
     measurements = []
 
