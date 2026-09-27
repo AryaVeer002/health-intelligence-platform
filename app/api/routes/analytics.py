@@ -1,15 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from sqlalchemy import select
-
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
 
 from app.models.user import User
-
 from app.models.health_record import HealthRecord
-
+from app.models.health_profile import HealthProfile
+from app.models.risk_profile import RiskProfile
 from app.models.health_measurement import HealthMeasurement
 
 from app.schemas.analytics import (
@@ -19,8 +18,10 @@ from app.schemas.analytics import (
     RiskAssessmentRequest,
 )
 
+from app.services.bmi_service import bmi_service
+from app.services.insight_service import insight_service
 from app.services.risk_service import risk_service
-
+from app.services.risk_feature_service import risk_feature_service
 
 router = APIRouter(
     prefix="/analytics",
@@ -469,4 +470,148 @@ def get_user_anomalies(
             if item["is_anomaly"]
         ),
         "anomalies": anomalies
+    }
+
+
+@router.get("/users/{user_id}/insights")
+def get_user_insights(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(
+        User.id == user_id
+    )
+    profile_statement = select(
+        HealthProfile
+    ).where(
+        HealthProfile.user_id == user_id
+    )
+
+    profile_result = db.execute(
+        profile_statement
+    )
+
+    profile = profile_result.scalar_one_or_none()
+
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    measurement_statement = (
+        select(HealthMeasurement)
+        .where(
+            HealthMeasurement.user_id == user_id
+        )
+        .order_by(
+            HealthMeasurement.measured_at.asc()
+        )
+    )
+
+    measurement_result = db.execute(
+        measurement_statement
+    )
+
+    measurements = (
+        measurement_result.scalars().all()
+    )
+
+    grouped_measurements = {}
+
+    for measurement in measurements:
+        metric = measurement.metric
+
+        if metric not in grouped_measurements:
+            grouped_measurements[metric] = []
+
+        grouped_measurements[metric].append(
+            measurement
+        )
+
+    trend_insights = (
+        insight_service.build_trend_insights(
+            grouped_measurements
+        )
+    )
+
+    anomaly_insights = (
+        insight_service.build_anomaly_insights(
+            grouped_measurements
+        )
+    )
+
+    insights = trend_insights + anomaly_insights
+
+    if profile is not None:
+        bmi = bmi_service.calculate(
+            profile.weight,
+            profile.height
+        )
+
+        insights.append(
+            {
+                "type": "profile",
+                "metric": "BMI",
+                "message": (
+                    f"Current calculated BMI is "
+                    f"{bmi} kg/m²."
+                )
+            }
+        )
+
+        risk_statement = select(
+            RiskProfile
+        ).where(
+            RiskProfile.user_id == user_id
+        )
+
+        risk_result = db.execute(
+            risk_statement
+        )
+
+        risk_profile = (
+            risk_result.scalar_one_or_none()
+        )
+
+        if profile is not None and risk_profile is not None:
+            risk_features = (
+                risk_feature_service.build_features(
+                    profile,
+                    risk_profile
+                )
+            )
+
+            prediction = risk_service.predict(
+                risk_features
+            )
+
+            insights.append(
+                {
+                    "type": "risk",
+                    "metric": "Diabetes risk",
+                    "risk_score": round(
+                        prediction["risk_score"],
+                        4
+                    ),
+                    "risk_level": prediction["risk_level"],
+                    "message": (
+                        f"Model-estimated diabetes risk "
+                        f"score is "
+                        f"{prediction['risk_score']:.4f} "
+                        f"({prediction['risk_level']})."
+                    ),
+                    "explanations": (
+                        prediction["explanations"]
+                    )
+                }
+            )
+
+    return {
+        "user_id": user_id,
+        "insight_count": len(insights),
+        "insights": insights
     }

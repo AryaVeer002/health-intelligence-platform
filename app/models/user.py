@@ -33,3 +33,8 @@ class User(Base):
         back_populates="user",
         uselist=False
     )
+
+    risk_profile: Mapped["RiskProfile | None"] = relationship(
+        back_populates="user",
+        uselist=False
+    )
