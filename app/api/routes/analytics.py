@@ -1,10 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
+
 from sqlalchemy import select
+
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
+
 from app.models.user import User
+
 from app.models.health_record import HealthRecord
+
+from app.models.health_measurement import HealthMeasurement
 
 from app.schemas.analytics import (
     TrendResponse,
@@ -199,3 +205,57 @@ def get_health_risk(
         ],
         "explanations": prediction["explanations"],
     }
+
+
+
+@router.get("/users/{user_id}/measurements")
+def get_user_measurements(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(
+        User.id == user_id
+    )
+
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    measurement_statement = (
+        select(HealthMeasurement)
+        .where(
+            HealthMeasurement.user_id == user_id
+        )
+        .order_by(
+            HealthMeasurement.measured_at.asc()
+        )
+    )
+
+    measurement_result = db.execute(
+        measurement_statement
+    )
+
+    measurements = (
+        measurement_result.scalars().all()
+    )
+
+    return {
+        "user_id": user_id,
+        "count": len(measurements),
+        "measurements": [
+            {
+                "id": measurement.id,
+                "metric": measurement.metric,
+                "value": measurement.value,
+                "unit": measurement.unit,
+                "measured_at": measurement.measured_at,
+                "report_id": measurement.report_id
+            }
+            for measurement in measurements
+        ]
+    }   
