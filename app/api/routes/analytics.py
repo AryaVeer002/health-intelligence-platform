@@ -363,3 +363,110 @@ def get_user_trends(
         "trend_count": len(trends),
         "trends": trends
     }
+
+
+
+@router.get("/users/{user_id}/anomalies")
+def get_user_anomalies(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    user_statement = select(User).where(
+        User.id == user_id
+    )
+
+    user_result = db.execute(user_statement)
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    measurement_statement = (
+        select(HealthMeasurement)
+        .where(
+            HealthMeasurement.user_id == user_id
+        )
+        .order_by(
+            HealthMeasurement.measured_at.asc()
+        )
+    )
+
+    measurement_result = db.execute(
+        measurement_statement
+    )
+
+    measurements = (
+        measurement_result.scalars().all()
+    )
+
+    grouped_measurements = {}
+
+    for measurement in measurements:
+        metric = measurement.metric
+
+        if metric not in grouped_measurements:
+            grouped_measurements[metric] = []
+
+        grouped_measurements[metric].append(
+            measurement
+        )
+
+    anomalies = []
+
+    for metric, metric_measurements in (
+        grouped_measurements.items()
+    ):
+        if len(metric_measurements) < 2:
+            continue
+
+        previous_measurement = (
+            metric_measurements[-2]
+        )
+
+        latest_measurement = (
+            metric_measurements[-1]
+        )
+
+        previous_value = previous_measurement.value
+        latest_value = latest_measurement.value
+
+        change = latest_value - previous_value
+
+        if previous_value != 0:
+            change_percent = (
+                change / previous_value
+            ) * 100
+        else:
+            change_percent = 0
+
+        is_anomaly = abs(change_percent) >= 10
+
+        anomalies.append(
+            {
+                "metric": metric,
+                "unit": latest_measurement.unit,
+                "previous_value": previous_value,
+                "latest_value": latest_value,
+                "change": round(change, 2),
+                "change_percent": round(
+                    change_percent,
+                    2
+                ),
+                "is_anomaly": is_anomaly,
+                "measured_at":
+                    latest_measurement.measured_at
+            }
+        )
+
+    return {
+        "user_id": user_id,
+        "anomaly_count": sum(
+            1
+            for item in anomalies
+            if item["is_anomaly"]
+        ),
+        "anomalies": anomalies
+    }
