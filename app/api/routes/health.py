@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.models.risk_profile import RiskProfile
 from app.models.health_profile import HealthProfile
@@ -31,8 +31,15 @@ def health_check():
 def create_health_profile(
     user_id: int,
     profile: HealthProfileCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's health profile"
+        )
+
     user_statement = select(User).where(
         User.id == user_id
     )
@@ -80,8 +87,6 @@ def create_health_profile(
     return health_profile
 
 
-
-
 @router.post(
     "/health/risk-profile/{user_id}",
     response_model=RiskProfileResponse
@@ -89,8 +94,15 @@ def create_health_profile(
 def create_risk_profile(
     user_id: int,
     profile: RiskProfileCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's risk profile"
+        )
+
     user_statement = select(User).where(
         User.id == user_id
     )

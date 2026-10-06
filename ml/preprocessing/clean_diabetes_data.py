@@ -1,109 +1,386 @@
 import pandas as pd
 
-DATA_PATH = "ml/data/LLCP2014.XPT"
-OUTPUT_PATH = "ml/data/diabetes_clean.csv"
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import (
+    roc_auc_score,
+    brier_score_loss,
+    precision_score,
+    recall_score,
+    f1_score,
+)
 
-FEATURES = [
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+DATA_PATH = "ml/data/diabetes_clean.csv"
+
+RANDOM_STATE = 42
+TEST_SIZE = 0.20
+VALIDATION_SIZE = 0.20
+
+THRESHOLDS = [
+    0.05,
+    0.10,
+    0.15,
+    0.20,
+    0.25,
+    0.30,
+    0.35,
+    0.40,
+    0.45,
+    0.50,
+]
+
+
+# ============================================================
+# LOAD DATA
+# ============================================================
+
+print("========================================")
+print("DIABETES MODEL EVALUATION")
+print("========================================")
+
+print("\nLoading dataset...")
+
+df = pd.read_csv(DATA_PATH)
+
+print(f"Total rows: {len(df):,}")
+
+X = df.drop(columns=["diabetes"])
+y = df["diabetes"]
+
+
+# ============================================================
+# REMOVE EXCLUDED FEATURES
+# ============================================================
+
+print("\nRemoving socioeconomic features...")
+
+X = X.drop(columns=["_EDUCAG", "_INCOMG"])
+
+
+# ============================================================
+# FEATURE GROUPS
+# ============================================================
+
+numeric_features = [
     "_BMI5",
+    "PHYSHLTH",
+]
+
+categorical_features = [
     "_AGEG5YR",
     "SEX",
     "_RFHLTH",
-    "PHYSHLTH",
     "_TOTINDA",
     "_RFSMOK3",
     "DRNKANY5",
-    "_EDUCAG",
-    "_INCOMG",
 ]
 
-TARGET = "DIABETE3"
 
-print("Loading BRFSS dataset...")
+# ============================================================
+# STEP 1 — INDEPENDENT TEST SPLIT
+# ============================================================
 
-df = pd.read_sas(DATA_PATH, format="xport")
+print("\nCreating independent test set...")
 
-print(f"Original rows: {len(df)}")
+X_development, X_test, y_development, y_test = train_test_split(
+    X,
+    y,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE,
+    stratify=y,
+)
 
-# --------------------------------------------------
-# 1. Keep only required columns
-# --------------------------------------------------
+print(f"Development rows: {len(X_development):,}")
+print(f"Independent test rows: {len(X_test):,}")
 
-columns = FEATURES + [TARGET]
 
-df = df[columns].copy()
+# ============================================================
+# STEP 2 — TRAIN / VALIDATION SPLIT
+# ============================================================
 
-print(f"Rows after column selection: {len(df)}")
+print("\nCreating validation set...")
 
-# --------------------------------------------------
-# 2. Keep only valid diabetes target responses
-# --------------------------------------------------
+X_train, X_validation, y_train, y_validation = train_test_split(
+    X_development,
+    y_development,
+    test_size=VALIDATION_SIZE,
+    random_state=RANDOM_STATE,
+    stratify=y_development,
+)
 
-df = df[df[TARGET].isin([1.0, 3.0])].copy()
+print(f"Training rows: {len(X_train):,}")
+print(f"Validation rows: {len(X_validation):,}")
+print(f"Test rows: {len(X_test):,}")
 
-# Convert:
-# 1 = diabetes
-# 3 = no diabetes
 
-df["diabetes"] = df[TARGET].map({
-    1.0: 1,
-    3.0: 0
-})
+# ============================================================
+# PREPROCESSING
+# ============================================================
 
-df.drop(columns=[TARGET], inplace=True)
+preprocessor = ColumnTransformer(
+    transformers=[
+        (
+            "numeric",
+            StandardScaler(),
+            numeric_features,
+        ),
+        (
+            "categorical",
+            OneHotEncoder(
+                handle_unknown="ignore",
+                drop="first",
+            ),
+            categorical_features,
+        ),
+    ]
+)
 
-print(f"Rows after target cleaning: {len(df)}")
 
-# --------------------------------------------------
-# 3. Convert BMI
-# --------------------------------------------------
+# ============================================================
+# BASE MODEL
+# ============================================================
 
-df["_BMI5"] = df["_BMI5"] / 100
+base_model = Pipeline(
+    steps=[
+        (
+            "preprocessor",
+            preprocessor,
+        ),
+        (
+            "model",
+            LogisticRegression(
+                max_iter=1000,
+                class_weight="balanced",
+                random_state=RANDOM_STATE,
+            ),
+        ),
+    ]
+)
 
-# --------------------------------------------------
-# 4. Replace invalid calculated-variable codes
-# --------------------------------------------------
 
-invalid_codes = {
-    "_RFHLTH": [9],
-    "_TOTINDA": [9],
-    "_RFSMOK3": [9],
-    "DRNKANY5": [7, 9],
-    "_EDUCAG": [9],
-    "_INCOMG": [9],
-}
+# ============================================================
+# CALIBRATED MODEL
+# ============================================================
 
-for column, codes in invalid_codes.items():
-    df[column] = df[column].replace(codes, pd.NA)
+model = CalibratedClassifierCV(
+    estimator=base_model,
+    method="sigmoid",
+    cv=5,
+    ensemble=True,
+)
 
-# --------------------------------------------------
-# 5. Remove rows missing required features
-# --------------------------------------------------
 
-print("\nMissing values before cleaning:")
+# ============================================================
+# TRAIN
+# ============================================================
 
-print(df.isna().sum())
+print("\n========================================")
+print("TRAINING CALIBRATED MODEL")
+print("========================================")
 
-df.dropna(inplace=True)
+model.fit(
+    X_train,
+    y_train,
+)
 
-print(f"\nRows after removing missing values: {len(df)}")
+print("Training completed.")
 
-# --------------------------------------------------
-# 6. Save cleaned dataset
-# --------------------------------------------------
 
-df.to_csv(OUTPUT_PATH, index=False)
+# ============================================================
+# VALIDATION PREDICTIONS
+# ============================================================
 
-print(f"\nClean dataset saved to: {OUTPUT_PATH}")
+print("\nGenerating validation probabilities...")
 
-# --------------------------------------------------
-# 7. Final summary
-# --------------------------------------------------
+validation_probabilities = model.predict_proba(
+    X_validation
+)[:, 1]
 
-print("\nFinal dataset shape:")
-print(df.shape)
+
+# ============================================================
+# THRESHOLD SELECTION
+# ============================================================
+
+print("\n========================================")
+print("VALIDATION THRESHOLD ANALYSIS")
+print("========================================")
+
+print(
+    f"{'Threshold':<12}"
+    f"{'Precision':<12}"
+    f"{'Recall':<12}"
+    f"{'F1':<12}"
+)
+
+best_threshold = None
+best_f1 = -1.0
+
+for threshold in THRESHOLDS:
+
+    predictions = (
+        validation_probabilities >= threshold
+    ).astype(int)
+
+    precision = precision_score(
+        y_validation,
+        predictions,
+        zero_division=0,
+    )
+
+    recall = recall_score(
+        y_validation,
+        predictions,
+        zero_division=0,
+    )
+
+    f1 = f1_score(
+        y_validation,
+        predictions,
+        zero_division=0,
+    )
+
+    print(
+        f"{threshold:<12.2f}"
+        f"{precision:<12.4f}"
+        f"{recall:<12.4f}"
+        f"{f1:<12.4f}"
+    )
+
+    if f1 > best_f1:
+        best_f1 = f1
+        best_threshold = threshold
+
+
+print("\nSelected threshold:")
+print(f"{best_threshold:.2f}")
+
+print(f"Validation F1: {best_f1:.4f}")
+
+
+# ============================================================
+# FINAL INDEPENDENT TEST EVALUATION
+# ============================================================
+
+print("\n========================================")
+print("INDEPENDENT TEST EVALUATION")
+print("========================================")
+
+test_probabilities = model.predict_proba(
+    X_test
+)[:, 1]
+
+
+# ------------------------------------------------------------
+# Probability-based metrics
+# ------------------------------------------------------------
+
+roc_auc = roc_auc_score(
+    y_test,
+    test_probabilities,
+)
+
+brier_score = brier_score_loss(
+    y_test,
+    test_probabilities,
+)
+
+
+# ------------------------------------------------------------
+# Threshold-based metrics
+# ------------------------------------------------------------
+
+test_predictions = (
+    test_probabilities >= best_threshold
+).astype(int)
+
+test_precision = precision_score(
+    y_test,
+    test_predictions,
+    zero_division=0,
+)
+
+test_recall = recall_score(
+    y_test,
+    test_predictions,
+    zero_division=0,
+)
+
+test_f1 = f1_score(
+    y_test,
+    test_predictions,
+    zero_division=0,
+)
+
+
+# ============================================================
+# RESULTS
+# ============================================================
+
+print("\n----------------------------------------")
+print("FINAL TEST METRICS")
+print("----------------------------------------")
+
+print(f"ROC-AUC:          {roc_auc:.6f}")
+print(f"Brier Score:      {brier_score:.6f}")
+print(f"Threshold:        {best_threshold:.2f}")
+print(f"Precision:        {test_precision:.6f}")
+print(f"Recall:           {test_recall:.6f}")
+print(f"F1 Score:         {test_f1:.6f}")
+
+
+# ============================================================
+# DATASET SUMMARY
+# ============================================================
+
+print("\n========================================")
+print("DATASET SUMMARY")
+print("========================================")
+
+print(f"Total dataset:       {len(df):,}")
+print(f"Training set:        {len(X_train):,}")
+print(f"Validation set:      {len(X_validation):,}")
+print(f"Independent test:    {len(X_test):,}")
 
 print("\nTarget distribution:")
-print(df["diabetes"].value_counts())
 
-print("\nFirst 5 rows:")
-print(df.head())
+print(
+    y.value_counts()
+    .sort_index()
+)
+
+
+# ============================================================
+# FINAL INTERPRETATION
+# ============================================================
+
+print("\n========================================")
+print("EVALUATION COMPLETE")
+print("========================================")
+
+print(
+    "\nThreshold was selected using the validation set."
+)
+
+print(
+    "Final performance was measured once on the "
+    "independent test set."
+)
+
+print(
+    "The independent test set was not used for "
+    "threshold selection."
+)
+
+print(
+    "\nThe model is a risk indicator and not a "
+    "clinical diagnosis."
+)

@@ -1,12 +1,14 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.models.health_profile import HealthProfile
 from app.models.health_record import HealthRecord
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.schemas.user import UserResponse, UserUpdate
 from app.schemas.health import (
     HealthProfileCreate,
     HealthProfileResponse,
@@ -20,32 +22,11 @@ router = APIRouter(
 )
 
 
-@router.get("/test")
-def users_test(db: Session = Depends(get_db)):
-    return {
-        "message": "Users API is working"
-    }
-
-
-@router.post("/", response_model=UserResponse)
-def create_user(
-    user_data: UserCreate,
-    db: Session = Depends(get_db)
-):
-    user = User(
-        name=user_data.name,
-        email=user_data.email
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    return user
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     statement = select(User).where(User.id == user_id)
@@ -60,12 +41,19 @@ def get_user(
             detail="User not found"
         )
 
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's data"
+        )
+
     return user
 
 @router.patch("/{user_id}", response_model=UserResponse)
 def update_user(
     user_id: int,
     user_data: UserUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     statement = select(User).where(User.id == user_id)
@@ -78,6 +66,12 @@ def update_user(
         raise HTTPException(
             status_code=404,
             detail="User not found"
+        )
+
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's data"
         )
 
     if user_data.name is not None:
@@ -91,6 +85,7 @@ def update_user(
 @router.delete("/{user_id}", status_code=204)
 def delete_user(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     statement = select(User).where(User.id == user_id)
@@ -105,7 +100,15 @@ def delete_user(
             detail="User not found"
         )
 
-    db.delete(user)
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to delete this user"
+        )
+
+    user.is_deleted = True
+    user.deleted_at = datetime.utcnow()
+
     db.commit()
 
     return None
@@ -119,6 +122,7 @@ def delete_user(
 def create_health_profile(
     user_id: int,
     profile_data: HealthProfileCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     user_statement = select(User).where(User.id == user_id)
@@ -129,6 +133,12 @@ def create_health_profile(
         raise HTTPException(
             status_code=404,
             detail="User not found"
+        )
+
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's health profile"
         )
 
     profile_statement = select(HealthProfile).where(
@@ -166,6 +176,7 @@ def create_health_profile(
 def create_health_record(
     user_id: int,
     record_data: HealthRecordCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     user_statement = select(User).where(User.id == user_id)
@@ -176,6 +187,12 @@ def create_health_record(
         raise HTTPException(
             status_code=404,
             detail="User not found"
+        )
+
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's health records"
         )
 
     record = HealthRecord(
@@ -193,13 +210,13 @@ def create_health_record(
     return record
 
 
-
 @router.get(
     "/{user_id}/health-records",
     response_model=list[HealthRecordResponse],
 )
 def get_health_records(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     user_statement = select(User).where(User.id == user_id)
@@ -210,6 +227,12 @@ def get_health_records(
         raise HTTPException(
             status_code=404,
             detail="User not found"
+        )
+
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's health records"
         )
 
     records_statement = (

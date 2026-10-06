@@ -107,3 +107,45 @@ export async function getMeasurements(
 
   return response.json();
 }
+
+
+export type InsightExplanation = {
+  factor: string;
+  contribution: number;
+  direction: string;
+};
+
+export type HealthInsight = {
+  type: string;
+  metric: string;
+  message: string;
+  risk_score?: number;
+  risk_level?: string;
+  explanations?: InsightExplanation[];
+};
+
+export type InsightsResponse = {
+  user_id: number;
+  insight_count: number;
+  insights: HealthInsight[];
+};
+
+
+export async function getInsights(
+  userId: number
+): Promise<InsightsResponse> {
+  const response = await fetch(
+    `${API_URL}/api/v1/analytics/users/${userId}/insights`,
+    {
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Insights API failed with status ${response.status}`
+    );
+  }
+
+  return response.json();
+}

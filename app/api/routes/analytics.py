@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_current_user, get_db
 
 from app.models.user import User
 from app.models.health_record import HealthRecord
@@ -42,16 +42,13 @@ def analytics_test():
 )
 def get_weight_trend(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_statement = select(User).where(User.id == user_id)
-    user_result = db.execute(user_statement)
-    user = user_result.scalar_one_or_none()
-
-    if user is None:
+    if user_id != current_user.id:
         raise HTTPException(
-            status_code=404,
-            detail="User not found"
+            status_code=403,
+            detail="You do not have access to this user's health data"
         )
 
     records_statement = (
@@ -95,16 +92,13 @@ def get_weight_trend(
 )
 def get_heart_rate_anomalies(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_statement = select(User).where(User.id == user_id)
-    user_result = db.execute(user_statement)
-    user = user_result.scalar_one_or_none()
-
-    if user is None:
+    if user_id != current_user.id:
         raise HTTPException(
-            status_code=404,
-            detail="User not found"
+            status_code=403,
+            detail="You do not have access to this user's health data"
         )
 
     records_statement = (
@@ -168,16 +162,13 @@ def get_heart_rate_anomalies(
 def get_health_risk(
     user_id: int,
     assessment: RiskAssessmentRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_statement = select(User).where(User.id == user_id)
-    user_result = db.execute(user_statement)
-    user = user_result.scalar_one_or_none()
-
-    if user is None:
+    if user_id != current_user.id:
         raise HTTPException(
-            status_code=404,
-            detail="User not found"
+            status_code=403,
+            detail="You do not have access to this user's health data"
         )
 
     model_features = {
@@ -205,6 +196,12 @@ def get_health_risk(
             for item in prediction["explanations"]
         ],
         "explanations": prediction["explanations"],
+        "disclaimer": (
+            "This is a model-based risk estimate, "
+            "not a medical diagnosis. "
+            "Consult a qualified healthcare professional "
+            "for medical advice."
+        ),
     }
 
 
@@ -212,19 +209,13 @@ def get_health_risk(
 @router.get("/users/{user_id}/measurements")
 def get_user_measurements(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_statement = select(User).where(
-        User.id == user_id
-    )
-
-    user_result = db.execute(user_statement)
-    user = user_result.scalar_one_or_none()
-
-    if user is None:
+    if user_id != current_user.id:
         raise HTTPException(
-            status_code=404,
-            detail="User not found"
+            status_code=403,
+            detail="You do not have access to this user's health data"
         )
 
     measurement_statement = (
@@ -265,8 +256,14 @@ def get_user_measurements(
 @router.get("/users/{user_id}/trends")
 def get_user_trends(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this user's health data"
+        )
     user_statement = select(User).where(
         User.id == user_id
     )
@@ -370,19 +367,13 @@ def get_user_trends(
 @router.get("/users/{user_id}/anomalies")
 def get_user_anomalies(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_statement = select(User).where(
-        User.id == user_id
-    )
-
-    user_result = db.execute(user_statement)
-    user = user_result.scalar_one_or_none()
-
-    if user is None:
+    if user_id != current_user.id:
         raise HTTPException(
-            status_code=404,
-            detail="User not found"
+            status_code=403,
+            detail="You do not have access to this user's health data"
         )
 
     measurement_statement = (
@@ -476,30 +467,13 @@ def get_user_anomalies(
 @router.get("/users/{user_id}/insights")
 def get_user_insights(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_statement = select(User).where(
-        User.id == user_id
-    )
-    profile_statement = select(
-        HealthProfile
-    ).where(
-        HealthProfile.user_id == user_id
-    )
-
-    profile_result = db.execute(
-        profile_statement
-    )
-
-    profile = profile_result.scalar_one_or_none()
-
-    user_result = db.execute(user_statement)
-    user = user_result.scalar_one_or_none()
-
-    if user is None:
+    if user_id != current_user.id:
         raise HTTPException(
-            status_code=404,
-            detail="User not found"
+            status_code=403,
+            detail="You do not have access to this user's health data"
         )
 
     measurement_statement = (
@@ -619,23 +593,13 @@ def get_user_insights(
 @router.get("/users/{user_id}/dashboard")
 def get_user_dashboard(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # --------------------------------------------------
-    # 1. Verify user
-    # --------------------------------------------------
-
-    user_statement = select(User).where(
-        User.id == user_id
-    )
-
-    user_result = db.execute(user_statement)
-    user = user_result.scalar_one_or_none()
-
-    if user is None:
+    if user_id != current_user.id:
         raise HTTPException(
-            status_code=404,
-            detail="User not found"
+            status_code=403,
+            detail="You do not have access to this user's health data"
         )
 
     # --------------------------------------------------

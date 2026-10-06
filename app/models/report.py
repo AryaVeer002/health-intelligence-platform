@@ -21,6 +21,12 @@ class Report(Base):
         nullable=False
     )
 
+    file_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True
+    )
+
     report_type: Mapped[str] = mapped_column(
         String(100),
         nullable=False

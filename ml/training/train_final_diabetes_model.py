@@ -110,6 +110,7 @@ model = CalibratedClassifierCV(
     estimator=base_model,
     method="sigmoid",
     cv=5,
+    ensemble=True,
 )
 
 model.fit(X, y)
@@ -150,11 +151,21 @@ metadata = {
     ],
     "numeric_features": numeric_features,
     "categorical_features": categorical_features,
-    "roc_auc": 0.8122673948108469,
-    "brier_score": 0.09749404162649433,
-    "threshold_precision": 0.3656,
-    "threshold_recall": 0.5719,
-    "threshold_f1": 0.4460,
+    "roc_auc": 0.812287,
+    "brier_score": 0.097490,
+    "threshold_precision": 0.365377,
+    "threshold_recall": 0.570810,
+    "threshold_f1": 0.445554,
+    "evaluation": {
+        "method": "stratified train-validation-test split",
+        "development_test_size": 0.20,
+        "validation_size": 0.20,
+        "random_state": 42,
+        "threshold_selection_metric": "F1",
+        "calibration": "sigmoid",
+        "calibration_cv": 5,
+        "evaluation_model": "same calibrated model configuration",
+    },
     "note": (
         "Model-based risk indicator using observational "
         "BRFSS 2014 data. Not a clinical diagnosis."

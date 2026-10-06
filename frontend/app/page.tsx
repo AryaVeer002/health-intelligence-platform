@@ -54,7 +54,7 @@ export default async function Home() {
           />
 
           <MetricCard
-            label="Risk Score"
+            label="Model Risk Score"
             value={
               dashboard.risk
                 ? `${(

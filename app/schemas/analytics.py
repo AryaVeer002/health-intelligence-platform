@@ -31,6 +31,7 @@ class RiskResponse(BaseModel):
     risk_level: str
     contributing_factors: list[str]
     explanations: list[RiskExplanation]
+    disclaimer: str
 
 
 

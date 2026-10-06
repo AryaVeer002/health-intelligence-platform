@@ -27,7 +27,7 @@ const menuItems = [
   {
     icon: "◈",
     label: "Insights",
-    href: "#",
+    href: "/insights",
   },
   {
     icon: "◎",
