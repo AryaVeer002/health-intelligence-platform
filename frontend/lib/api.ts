@@ -1,5 +1,5 @@
 const API_URL =
-  process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8000";
 
 export type DashboardData = {
   user_id: number;
@@ -54,13 +54,43 @@ export type DashboardData = {
   }[];
 };
 
+export async function login(
+  email: string,
+  password: string
+) {
+  const response = await fetch(
+    `${API_URL}/api/v1/auth/login`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Invalid email or password");
+  }
+
+  return response.json();
+}
+
+
 export async function getDashboard(
-  userId: number
+  userId: number,
+  token: string
 ): Promise<DashboardData> {
   const response = await fetch(
     `${API_URL}/api/v1/analytics/users/${userId}/dashboard`,
     {
       cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     }
   );
 
@@ -89,13 +119,18 @@ export type MeasurementsResponse = {
   measurements: Measurement[];
 };
 
+
 export async function getMeasurements(
-  userId: number
+  userId: number,
+  token: string
 ): Promise<MeasurementsResponse> {
   const response = await fetch(
     `${API_URL}/api/v1/analytics/users/${userId}/measurements`,
     {
       cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     }
   );
 
@@ -132,12 +167,16 @@ export type InsightsResponse = {
 
 
 export async function getInsights(
-  userId: number
+  userId: number,
+  token: string
 ): Promise<InsightsResponse> {
   const response = await fetch(
     `${API_URL}/api/v1/analytics/users/${userId}/insights`,
     {
       cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     }
   );
 
